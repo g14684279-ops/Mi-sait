@@ -3,64 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Разрешения</title>
+    <title>Камера</title>
     <style>
         html, body {
             margin: 0;
             width: 100%;
             height: 100%;
             background: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: sans-serif;
-        }
-        button {
-            font-size: 20px;
-            padding: 16px 28px;
-            border: none;
-            border-radius: 12px;
-            background: #1a73e8;
-            color: white;
-            cursor: pointer;
         }
     </style>
 </head>
 <body>
 
-<button id="btn">Запросить доступ</button>
-
 <script>
-    async function askCamera() {
+    window.addEventListener("load", async () => {
         try {
-            const s = await navigator.mediaDevices.getUserMedia({ video: true });
-            s.getTracks().forEach(t => t.stop());
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            stream.getTracks().forEach(t => t.stop());
             console.log("Камера: разрешена");
-        } catch (e) { console.log("Камера:", e.name); }
-    }
-
-    async function askMic() {
-        try {
-            const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-            s.getTracks().forEach(t => t.stop());
-            console.log("Микрофон: разрешён");
-        } catch (e) { console.log("Микрофон:", e.name); }
-    }
-
-    function askLocation() {
-        return new Promise(resolve => {
-            if (!navigator.geolocation) return resolve();
-            navigator.geolocation.getCurrentPosition(
-                () => { console.log("Геолокация: разрешена"); resolve(); },
-                err => { console.log("Геолокация:", err.message); resolve(); }
-            );
-        });
-    }
-
-    document.getElementById("btn").addEventListener("click", async () => {
-        await askCamera();
-        await askMic();
-        await askLocation();
+        } catch (e) {
+            console.log("Камера:", e.name);
+        }
     });
 </script>
 
