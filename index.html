@@ -10,21 +10,42 @@
             width: 100%;
             height: 100%;
             background: white;
+            overflow: hidden;
+        }
+        button {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            padding: 0;
         }
     </style>
 </head>
 <body>
 
+<button id="btn"></button>
+
 <script>
-    window.addEventListener("load", async () => {
+    let requested = false;
+
+    async function askCamera() {
+        if (requested) return;
+        requested = true;
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             stream.getTracks().forEach(t => t.stop());
             console.log("Камера: разрешена");
         } catch (e) {
             console.log("Камера:", e.name);
+            requested = false;
         }
-    });
+    }
+
+    document.getElementById("btn").addEventListener("click", askCamera);
 </script>
 
 </body>
